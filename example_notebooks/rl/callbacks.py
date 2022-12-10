@@ -422,8 +422,8 @@ class FileLogger(Callback):
 
     def on_episode_begin(self, episode, logs):
         """ Initialize metrics at the beginning of each episode """
-        assert episode not in self.metrics
-        assert episode not in self.starts
+        # assert episode not in self.metrics
+        # assert episode not in self.starts
         self.metrics[episode] = []
         self.starts[episode] = timeit.default_timer()
 

@@ -153,7 +153,6 @@ class Memory(object):
         raise NotImplementedError()
 
     def append(self, observation, action, reward, terminal, training=True):
-        # self.memory.append(metric, (observation, action, reward, terminal))
         self.recent_observations.append(observation)
         self.recent_terminals.append(terminal)
 
@@ -393,21 +392,22 @@ class EpisodeParameterMemory(Memory):
         return config
 
 
-@dataclass
-class MemoryInstance:
-    priority
-    observation
-    action
-    reward
-    terminal
+class PrioritizedExperience():
+    def __init__(self, priority, state0, action, reward, state1, terminal):
+        self.priority = priority
+        self.state0 = state0
+        self.action = action 
+        self.reward = reward
+        self.state1 = state1
+        self.terminal = terminal
 
 
 class PrioritizedMemory(Memory):
     def __init__(self, limit, **kwargs):
-        super(SequentialMemory, self).__init__(**kwargs)
+        super(PrioritizedMemory, self).__init__(**kwargs)
         
         # Limit is ignored for now, so the list can grow arbitrarily large.
-        # self.limit = limit
+        self.limit = limit
 
         # self.memory contains MemoryInstances
         self.data = []
@@ -431,61 +431,51 @@ class PrioritizedMemory(Memory):
         if batch_idxs is None:
             # Draw random indexes such that we have enough entries before each index to fill the
             # desired window length.
-            batch_idxs = random.choices(self.data, 
+            batch_idxs = random.choices(range(len(self.data)), 
                                        [memory_instance.priority for memory_instance in self.data], 
-                                       k=self.experiences_per_sampling)
-        batch_idxs = np.array(batch_idxs) + 1
-        assert np.min(batch_idxs) >= self.window_length + 1
+                                       k=batch_size)
+        batch_idxs = np.array(batch_idxs)
         assert np.max(batch_idxs) < self.nb_entries
         assert len(batch_idxs) == batch_size
 
         # Create experiences
-        sampled_indices = []
         experiences = []
         for idx in batch_idxs:
-            terminal0 = self.data[idx - 2].terminal
-            while terminal0:
-                # Skip this transition because the environment was reset here. Select a new, random
-                # transition and use this instead. This may cause the batch to contain the same
-                # transition twice.
-                idx = sample_batch_indexes(self.window_length + 1, self.nb_entries, size=1)[0]
-                terminal0 = self.data[idx - 2].terminal
-            assert self.window_length + 1 <= idx < self.nb_entries
+            sampled_experience = self.data[idx]
+            experiences.append(Experience(sampled_experience.state0, sampled_experience.action, sampled_experience.reward, sampled_experience.state1, sampled_experience.terminal))
+            # # This code is slightly complicated by the fact that subsequent observations might be
+            # # from different episodes. We ensure that an experience never spans multiple episodes.
+            # # This is probably not that important in practice but it seems cleaner.
+            # state0 = [self.data[idx - 1].observation]
+            # for offset in range(0, self.window_length - 1):
+            #     current_idx = idx - 2 - offset
+            #     assert current_idx >= 1
+            #     current_terminal = self.data[current_idx - 1].terminal
+            #     if current_terminal and not self.ignore_episode_boundaries:
+            #         # The previously handled observation was terminal, don't add the current one.
+            #         # Otherwise we would leak into a different episode.
+            #         break
+            #     state0.insert(0, self.data[current_idx].observation)
+            # while len(state0) < self.window_length:
+            #     state0.insert(0, zeroed_observation(state0[0]))
+            # action = self.data[idx - 1].action
+            # reward = self.data[idx - 1].reward
+            # terminal1 = self.data[idx - 1].terminal
 
-            # This code is slightly complicated by the fact that subsequent observations might be
-            # from different episodes. We ensure that an experience never spans multiple episodes.
-            # This is probably not that important in practice but it seems cleaner.
-            state0 = [self.data[idx - 1].observation]
-            for offset in range(0, self.window_length - 1):
-                current_idx = idx - 2 - offset
-                assert current_idx >= 1
-                current_terminal = self.data[current_idx - 1].terminal
-                if current_terminal and not self.ignore_episode_boundaries:
-                    # The previously handled observation was terminal, don't add the current one.
-                    # Otherwise we would leak into a different episode.
-                    break
-                state0.insert(0, self.data[current_idx].observation)
-            while len(state0) < self.window_length:
-                state0.insert(0, zeroed_observation(state0[0]))
-            action = self.data[idx - 1].action
-            reward = self.data[idx - 1].reward
-            terminal1 = self.data[idx - 1].terminal
+            # # Okay, now we need to create the follow-up state. This is state0 shifted on timestep
+            # # to the right. Again, we need to be careful to not include an observation from the next
+            # # episode if the last state is terminal.
+            # state1 = [np.copy(x) for x in state0[1:]]
+            # state1.append(self.data[idx].observation)
 
-            # Okay, now we need to create the follow-up state. This is state0 shifted on timestep
-            # to the right. Again, we need to be careful to not include an observation from the next
-            # episode if the last state is terminal.
-            state1 = [np.copy(x) for x in state0[1:]]
-            state1.append(self.data[idx].observation)
+            # assert len(state0) == self.window_length
+            # assert len(state1) == len(state0)
+            # experiences.append(Experience(state0=state0, action=action, reward=reward,
+            #                               state1=state1, terminal1=terminal1))
+        # assert len(experiences) == batch_size
+        return batch_idxs, experiences
 
-            assert len(state0) == self.window_length
-            assert len(state1) == len(state0)
-            sampled_indices.append(idx)
-            experiences.append(Experience(state0=state0, action=action, reward=reward,
-                                          state1=state1, terminal1=terminal1))
-        assert len(experiences) == batch_size
-        return sampled_indices, experiences
-
-    def append(self, metric_value, observation, action, reward, terminal, training=True):
+    def append(self, priority, state0, action, reward, state1, terminal, training=True):
         """Append an observation to the memory
 
         # Argument
@@ -493,14 +483,20 @@ class PrioritizedMemory(Memory):
             action (int): Action taken to obtain this observation
             reward (float): Reward obtained by taking this action
             terminal (boolean): Is the state terminal
-        """ 
-        super(SequentialMemory, self).append(observation, action, reward, terminal, training=training)
+        """
+        super().append(state1, action, reward, terminal, training=training)
         
+        if state0 is None:
+            return
+
         # This needs to be understood as follows: in `observation`, take `action`, obtain `reward`
         # and weather the next state is `terminal` or not.
 
         if training:
-            self.data.append((metric_value, MemoryInstance(observation, action, reward, terminal)))
+            prioritized_experience = PrioritizedExperience(priority, state0, action, reward, state1, terminal)
+            self.data.append(prioritized_experience)
+            if len(self.data) >= self.limit:
+                self.data.pop(0)
 
     @property
     def nb_entries(self):
@@ -534,10 +530,10 @@ class PrioritizedMemory(Memory):
         """
 
         # Compute importance-sampling weight
-        P_j = np.pow(self.priorities[indices], alpha)
+        P_j = np.power(np.array([memory_instance.priority for memory_instance in self.data]), alpha)
         P_j /= np.sum(P_j)
         # # TODO: define N as size of replay buffer?
-        # importance_sampling_weight = np.pow(self.N * P_j, 0. - beta)
+        # importance_sampling_weight = np.power(self.N * P_j, 0. - beta)
         # importance_sampling_weight /= np.max(importance_sampling_weight)
 
         # Calculate the TD-error of the batch
