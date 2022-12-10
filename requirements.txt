@@ -2,8 +2,8 @@ numpy
 tensorflow==1.14.0
 keras==2.3.1
 gym
-json
 copy
 shutil
 datetime
 pickle
+sortedcontainers
