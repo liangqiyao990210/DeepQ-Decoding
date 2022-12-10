@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from collections import deque, namedtuple
 import warnings
 import random
+from sortedcontainers import SortedList
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -9,7 +11,7 @@ import numpy as np
 # This is to be understood as a transition: Given `state0`, performing `action`
 # yields `reward` and results in `state1`, which might be `terminal`.
 Experience = namedtuple('Experience', 'state0, action, reward, state1, terminal1')
-
+ReplayParams = namedtuple('ReplayParams', 'priority, probability, weight, index')
 
 def sample_batch_indexes(low, high, size):
     """Return a sample of (size) unique elements between low and high
@@ -83,6 +85,38 @@ class RingBuffer(object):
         self.data[(self.start + self.length - 1) % self.maxlen] = v
 
 
+class SortedBuffer(object):
+    def __init__(self, maxlen):
+        self.maxlen = maxlen
+        self.start = 0
+        self.length = 0
+        self.data = SortedList()
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, idx):
+        """Return element of buffer at specific index
+
+        # Argument
+            idx (int): Index wanted
+
+        # Returns
+            The element of buffer at given index
+        """
+        if idx < 0 or idx >= self.length:
+            raise KeyError()
+        return self.data[idx]
+
+    def append(self, v):
+        """Append an element to the buffer
+
+        # Argument
+            v (object): Element to append
+        """
+        self.data.add(v)
+
+
 def zeroed_observation(observation):
     """Return an array of zeros with same shape as given observation
 
@@ -111,10 +145,15 @@ class Memory(object):
         self.recent_observations = deque(maxlen=window_length)
         self.recent_terminals = deque(maxlen=window_length)
 
+        # self.memory is a SortedList containing tuples of the type
+        # (metric_value, (observation, action, reward, terminal))
+        # self.memory = SortedList()
+
     def sample(self, batch_size, batch_idxs=None):
         raise NotImplementedError()
 
     def append(self, observation, action, reward, terminal, training=True):
+        # self.memory.append(metric, (observation, action, reward, terminal))
         self.recent_observations.append(observation)
         self.recent_terminals.append(terminal)
 
@@ -352,3 +391,162 @@ class EpisodeParameterMemory(Memory):
         config = super(SequentialMemory, self).get_config()
         config['limit'] = self.limit
         return config
+
+
+@dataclass
+class MemoryInstance:
+    priority
+    observation
+    action
+    reward
+    terminal
+
+
+class PrioritizedMemory(Memory):
+    def __init__(self, limit, **kwargs):
+        super(SequentialMemory, self).__init__(**kwargs)
+        
+        # Limit is ignored for now, so the list can grow arbitrarily large.
+        # self.limit = limit
+
+        # self.memory contains MemoryInstances
+        self.data = []
+
+    def sample(self, batch_size, batch_idxs=None):
+        """Return a randomized batch of experiences
+
+        # Argument
+            batch_size (int): Size of the all batch
+            batch_idxs (int): Indexes to extract
+        # Returns
+            A list of experiences randomly selected
+        """
+        # It is not possible to tell whether the first state in the memory is terminal, because it
+        # would require access to the "terminal" flag associated to the previous state. As a result
+        # we will never return this first state (only using `self.terminals[0]` to know whether the
+        # second state is terminal).
+        # In addition we need enough entries to fill the desired window length.
+        assert self.nb_entries >= self.window_length + 2, 'not enough entries in the memory'
+
+        if batch_idxs is None:
+            # Draw random indexes such that we have enough entries before each index to fill the
+            # desired window length.
+            batch_idxs = random.choices(self.data, 
+                                       [memory_instance.priority for memory_instance in self.data], 
+                                       k=self.experiences_per_sampling)
+        batch_idxs = np.array(batch_idxs) + 1
+        assert np.min(batch_idxs) >= self.window_length + 1
+        assert np.max(batch_idxs) < self.nb_entries
+        assert len(batch_idxs) == batch_size
+
+        # Create experiences
+        sampled_indices = []
+        experiences = []
+        for idx in batch_idxs:
+            terminal0 = self.data[idx - 2].terminal
+            while terminal0:
+                # Skip this transition because the environment was reset here. Select a new, random
+                # transition and use this instead. This may cause the batch to contain the same
+                # transition twice.
+                idx = sample_batch_indexes(self.window_length + 1, self.nb_entries, size=1)[0]
+                terminal0 = self.data[idx - 2].terminal
+            assert self.window_length + 1 <= idx < self.nb_entries
+
+            # This code is slightly complicated by the fact that subsequent observations might be
+            # from different episodes. We ensure that an experience never spans multiple episodes.
+            # This is probably not that important in practice but it seems cleaner.
+            state0 = [self.data[idx - 1].observation]
+            for offset in range(0, self.window_length - 1):
+                current_idx = idx - 2 - offset
+                assert current_idx >= 1
+                current_terminal = self.data[current_idx - 1].terminal
+                if current_terminal and not self.ignore_episode_boundaries:
+                    # The previously handled observation was terminal, don't add the current one.
+                    # Otherwise we would leak into a different episode.
+                    break
+                state0.insert(0, self.data[current_idx].observation)
+            while len(state0) < self.window_length:
+                state0.insert(0, zeroed_observation(state0[0]))
+            action = self.data[idx - 1].action
+            reward = self.data[idx - 1].reward
+            terminal1 = self.data[idx - 1].terminal
+
+            # Okay, now we need to create the follow-up state. This is state0 shifted on timestep
+            # to the right. Again, we need to be careful to not include an observation from the next
+            # episode if the last state is terminal.
+            state1 = [np.copy(x) for x in state0[1:]]
+            state1.append(self.data[idx].observation)
+
+            assert len(state0) == self.window_length
+            assert len(state1) == len(state0)
+            sampled_indices.append(idx)
+            experiences.append(Experience(state0=state0, action=action, reward=reward,
+                                          state1=state1, terminal1=terminal1))
+        assert len(experiences) == batch_size
+        return sampled_indices, experiences
+
+    def append(self, metric_value, observation, action, reward, terminal, training=True):
+        """Append an observation to the memory
+
+        # Argument
+            observation (dict): Observation returned by environment
+            action (int): Action taken to obtain this observation
+            reward (float): Reward obtained by taking this action
+            terminal (boolean): Is the state terminal
+        """ 
+        super(SequentialMemory, self).append(observation, action, reward, terminal, training=training)
+        
+        # This needs to be understood as follows: in `observation`, take `action`, obtain `reward`
+        # and weather the next state is `terminal` or not.
+
+        if training:
+            self.data.append((metric_value, MemoryInstance(observation, action, reward, terminal)))
+
+    @property
+    def nb_entries(self):
+        """Return number of observations
+
+        # Returns
+            Number of observations
+        """
+        return len(self.data)
+
+    def get_config(self):
+        """Return configurations of SequentialMemory
+
+        # Returns
+            Dict of config
+        """
+        config = super(SequentialMemory, self).get_config()
+        # config['limit'] = self.limit
+        return config
+
+    def update_priorities(self, indices, rs, q, alpha=1.0, beta=1.0, eps=1e-3): 
+        """Update priorities of items in the buffer.
+       
+        Parameters:
+            indices (list of indices): indices of data that was sampled from the buffer to be updated
+            Rs (np.array[float]): Rj + gamma * q_batch
+            q (np.array[float])
+            alpha (float) from 0 to 1: hyper parameter
+            beta (float) from 0 to 1: hyper parameter
+            eps (float): small number to prevent priority staying as 0
+        """
+
+        # Compute importance-sampling weight
+        P_j = np.pow(self.priorities[indices], alpha)
+        P_j /= np.sum(P_j)
+        # # TODO: define N as size of replay buffer?
+        # importance_sampling_weight = np.pow(self.N * P_j, 0. - beta)
+        # importance_sampling_weight /= np.max(importance_sampling_weight)
+
+        # Calculate the TD-error of the batch
+        td_error = rs - q
+               
+        # Update transition priotities
+        for i, idx_to_update in enumerate(indices):
+            self.data[idx_to_update].priority = np.abs(td_error[i]) + eps
+
+        # Accumulate weight-change delta
+        # TODO(liangqiyao990210): Calculate the weight_change and figure out how to actually return it
+        # and use it to update weights 
