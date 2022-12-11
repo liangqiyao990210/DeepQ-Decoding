@@ -21,7 +21,7 @@ fixed_config = {"d": 5,
                 "volume_depth": 5,
                 "testing_length": 101,
                 "buffer_size": 50000,
-                "dueling": True,
+                "dueling": False,
                 "masked_greedy": False,
                 "static_decoder": True}
 
@@ -41,7 +41,7 @@ max_eps_list = [1.0]
 target_network_update_freq_list = [2500]
 gamma_list = [0.99]
 final_eps_list = [0.02]
-alpha_list = [0.5, 0.7, 1.0]
+alpha_list = [0, 0.5, 0.7, 1.0]
 
 config_counter = 1
 for ls in learning_starts_list:
@@ -84,12 +84,13 @@ for ls in learning_starts_list:
 
                                 f = open(config_directory + "/simulation_script.sh",'w')  
                                 f.write('''#!/bin/bash
-
+#SBATCH -p scavenger                         # scavenger division
+#SBATCH -c 1                                 # Number of cores
+#SBATCH --array=1-1  			             # How many jobs do you have                               
 #SBATCH --job-name='''+job_name+'''          # Job name, will show up in squeue output
-#SBATCH --ntasks=4                           # Number of cores
-#SBATCH --nodes=1                            # Ensure that all cores are on one machine
-#SBATCH --time=0-'''+job_limit+''':30:00    # Runtime in DAYS-HH:MM:SS format
-#SBATCH --mem-per-cpu=1000                   # Memory per cpu in MB (see also --mem) 
+#SBATCH --mail-type=END
+#SBATCH --mail-user=ql94@duke.edu	       # It will send you an email when the job is finished. 
+#SBATCH --mem=1G                   # Memory per cpu in MB (see also --mem) 
 #SBATCH --output='''+output_file+'''         # File to which standard out will be written
 #SBATCH --error='''+error_file+'''           # File to which standard err will be written
 
@@ -102,6 +103,8 @@ scontrol show job $SLURM_JOBID
 # ----------- Activate the environment  -----------------------------------------
 
 #module load python/3.6.5
+#module load tensorflow/1.14.0
+#module load keras/1.14.0
 
 # ------- run the script -----------------------
 
