@@ -412,7 +412,7 @@ class PrioritizedMemory(Memory):
         # self.memory contains MemoryInstances
         self.data = []
 
-    def sample(self, batch_size, batch_idxs=None):
+    def sample(self, batch_size, batch_idxs=None, alpha=0.7):
         """Return a randomized batch of experiences
 
         # Argument
@@ -431,8 +431,10 @@ class PrioritizedMemory(Memory):
         if batch_idxs is None:
             # Draw random indexes such that we have enough entries before each index to fill the
             # desired window length.
-            batch_idxs = random.choices(range(len(self.data)), 
-                                       [memory_instance.priority for memory_instance in self.data], 
+            sample_probabilities = np.power(np.array([memory_instance.priority for memory_instance in self.data]), alpha)
+            sample_probabilities /= np.sum(sample_probabilities)
+            batch_idxs = random.choices(range(len(self.data)),
+                                       sample_probabilities, 
                                        k=batch_size)
         batch_idxs = np.array(batch_idxs)
         assert np.max(batch_idxs) < self.nb_entries
@@ -443,36 +445,7 @@ class PrioritizedMemory(Memory):
         for idx in batch_idxs:
             sampled_experience = self.data[idx]
             experiences.append(Experience(sampled_experience.state0, sampled_experience.action, sampled_experience.reward, sampled_experience.state1, sampled_experience.terminal))
-            # # This code is slightly complicated by the fact that subsequent observations might be
-            # # from different episodes. We ensure that an experience never spans multiple episodes.
-            # # This is probably not that important in practice but it seems cleaner.
-            # state0 = [self.data[idx - 1].observation]
-            # for offset in range(0, self.window_length - 1):
-            #     current_idx = idx - 2 - offset
-            #     assert current_idx >= 1
-            #     current_terminal = self.data[current_idx - 1].terminal
-            #     if current_terminal and not self.ignore_episode_boundaries:
-            #         # The previously handled observation was terminal, don't add the current one.
-            #         # Otherwise we would leak into a different episode.
-            #         break
-            #     state0.insert(0, self.data[current_idx].observation)
-            # while len(state0) < self.window_length:
-            #     state0.insert(0, zeroed_observation(state0[0]))
-            # action = self.data[idx - 1].action
-            # reward = self.data[idx - 1].reward
-            # terminal1 = self.data[idx - 1].terminal
 
-            # # Okay, now we need to create the follow-up state. This is state0 shifted on timestep
-            # # to the right. Again, we need to be careful to not include an observation from the next
-            # # episode if the last state is terminal.
-            # state1 = [np.copy(x) for x in state0[1:]]
-            # state1.append(self.data[idx].observation)
-
-            # assert len(state0) == self.window_length
-            # assert len(state1) == len(state0)
-            # experiences.append(Experience(state0=state0, action=action, reward=reward,
-            #                               state1=state1, terminal1=terminal1))
-        # assert len(experiences) == batch_size
         return batch_idxs, experiences
 
     def append(self, priority, state0, action, reward, state1, terminal, training=True):
@@ -517,32 +490,16 @@ class PrioritizedMemory(Memory):
         # config['limit'] = self.limit
         return config
 
-    def update_priorities(self, indices, rs, q, alpha=1.0, beta=1.0, eps=1e-3): 
+    def update_priorities(self, indices, td_errors, eps=1e-3): 
         """Update priorities of items in the buffer.
        
         Parameters:
             indices (list of indices): indices of data that was sampled from the buffer to be updated
-            Rs (np.array[float]): Rj + gamma * q_batch
-            q (np.array[float])
-            alpha (float) from 0 to 1: hyper parameter
-            beta (float) from 0 to 1: hyper parameter
+            td_errors (list of floats): td_errors for the data points that were sampled
             eps (float): small number to prevent priority staying as 0
         """
-
-        # Compute importance-sampling weight
-        P_j = np.power(np.array([memory_instance.priority for memory_instance in self.data]), alpha)
-        P_j /= np.sum(P_j)
-        # # TODO: define N as size of replay buffer?
-        # importance_sampling_weight = np.power(self.N * P_j, 0. - beta)
-        # importance_sampling_weight /= np.max(importance_sampling_weight)
-
-        # Calculate the TD-error of the batch
-        td_error = rs - q
+        new_priorities = np.abs(td_errors) + eps
                
         # Update transition priotities
         for i, idx_to_update in enumerate(indices):
-            self.data[idx_to_update].priority = np.abs(td_error[i]) + eps
-
-        # Accumulate weight-change delta
-        # TODO(liangqiyao990210): Calculate the weight_change and figure out how to actually return it
-        # and use it to update weights 
+            self.data[idx_to_update].priority = new_priorities[i]
