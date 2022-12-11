@@ -5,10 +5,13 @@ import keras.backend as K
 from keras.models import Model
 from keras.layers import Lambda, Input, Layer, Dense
 
+import tensorflow as tf
+
 from rl.core import Agent
 from rl.policy import EpsGreedyQPolicy, GreedyQPolicy
 from rl.util import *
 
+import sys
 
 def mean_q(y_true, y_pred):
     return K.mean(K.max(y_pred, axis=-1))
@@ -19,7 +22,7 @@ class AbstractDQNAgent(Agent):
     """
     def __init__(self, nb_actions, memory, gamma=.99, batch_size=32, nb_steps_warmup=1000,
                  train_interval=1, memory_interval=1, target_model_update=10000,
-                 delta_range=None, delta_clip=np.inf, custom_model_objects={}, **kwargs):
+                 delta_range=None, delta_clip=np.inf, custom_model_objects={}, eta=1e-4, **kwargs):
         super(AbstractDQNAgent, self).__init__(**kwargs)
 
         # Soft vs hard target model updates.
@@ -46,6 +49,7 @@ class AbstractDQNAgent(Agent):
         self.target_model_update = target_model_update
         self.delta_clip = delta_clip
         self.custom_model_objects = custom_model_objects
+        self.eta = eta
 
         # Related objects.
         self.memory = memory
@@ -75,6 +79,7 @@ class AbstractDQNAgent(Agent):
         return {
             'nb_actions': self.nb_actions,
             'gamma': self.gamma,
+            'eta': self.eta,
             'batch_size': self.batch_size,
             'nb_steps_warmup': self.nb_steps_warmup,
             'train_interval': self.train_interval,
@@ -153,6 +158,15 @@ class DQNAgent(AbstractDQNAgent):
 
         # State.
         self.reset_states()
+
+    def calculate_huber_loss(self, y_trues, y_preds, mask):
+        losses = []
+        for y_true, y_pred in zip(y_trues, y_preds):
+            loss = huber_loss(y_true, y_pred, self.delta_clip)
+            if mask.shape == loss.shape:
+                loss *= mask
+            losses.append(np.sum(loss.eval(session=tf.compat.v1.Session())))
+        return losses
 
     def get_config(self):
         config = super(DQNAgent, self).get_config()
@@ -336,19 +350,46 @@ class DQNAgent(AbstractDQNAgent):
                 mask[action] = 1.  # enable loss for this specific action
             targets = np.array(targets).astype('float32')
             masks = np.array(masks).astype('float32')
-
+            
             # Finally, perform a single update on the entire batch. We use a dummy target since
             # the actual loss is computed in a Lambda layer that needs more complex input. However,
             # it is still useful to know the actual target to compute metrics properly.
             ins = [state0_batch] if type(self.model.input) is not list else state0_batch
-            metrics = self.trainable_model.train_on_batch(ins + [targets, masks], [dummy_targets, targets])
-            metrics = [metric for idx, metric in enumerate(metrics) if idx not in (1, 2)]  # throw away individual losses
+            model_inputs = ins + [targets, masks]
+            model_outputs = [dummy_targets, targets]
+
+            if self.enable_prioritized_replay:
+                gradients = K.gradients(self.trainable_model.output, self.trainable_model.input)
+                # print(gradients)
+                sess = K.get_session()
+                feed_dict = {input_key : model_input for input_key, model_input in zip(self.trainable_model.input, model_inputs)}
+                evaluated_gradients = sess.run(gradients, feed_dict=feed_dict)
+                [print(gradient.shape) for gradient in evaluated_gradients]
+                weight_change = self.memory.process_sampled_batch(indices, Rs, q_values[range(self.batch_size), actions], evaluated_gradients)
+
+                # Update weights with accumulated weight-change.
+                for i, layer_weights in enumerate(self.trainable_model.get_weights()):
+                    print("layer_weights:", i, layer_weights.shape)
+                # print(sys.getsizeof(self.model.get_weights()))
+
+                # for i, layer_weights in enumerate(weight_change):
+                #     print("weight_change:", i, layer_weights.shape)
+                # print(len(weight_change))
+                # print(len(self.trainable_model.get_weights() + weight_change))
+                self.trainable_model.set_weights(self.trainable_model.get_weights() + weight_change)
+                # print(len(self.trainable_model.get_weights()))
+                predicted_outputs = self.trainable_model.predict_on_batch(model_inputs)
+                metrics = self.calculate_huber_loss(model_outputs, predicted_outputs, masks)
+
+            else:
+                for i, layer_weights in enumerate(self.trainable_model.get_weights()):
+                    print("layer_weights:", i, layer_weights)
+                metrics = self.trainable_model.train_on_batch(model_inputs, model_outputs)
+                metrics = [metric for idx, metric in enumerate(metrics) if idx not in (1, 2)]  # throw away individual losses
+            
             metrics += self.policy.metrics
             if self.processor is not None:
                 metrics += self.processor.metrics
-
-            if self.enable_prioritized_replay:
-                self.memory.update_priorities(indices, Rs, q_values[range(self.batch_size), actions])
 
         if self.target_model_update >= 1 and self.step % self.target_model_update == 0:
             self.update_target_model_hard()

@@ -517,32 +517,53 @@ class PrioritizedMemory(Memory):
         # config['limit'] = self.limit
         return config
 
-    def update_priorities(self, indices, rs, q, alpha=1.0, beta=1.0, eps=1e-3): 
-        """Update priorities of items in the buffer.
-       
+    def process_sampled_batch(self, indices, rs, q, gradients, alpha=1.0, beta=1.0, eps=1e-3): 
+        """Update priorities for sampled items and returns necessary weight change.
+
         Parameters:
             indices (list of indices): indices of data that was sampled from the buffer to be updated
             Rs (np.array[float]): Rj + gamma * q_batch
-            q (np.array[float])
+            q (np.array[float]): Q(S_{j-1}, A_{j-1})
+            gradients (list[np.array[float]]): list of 3 nd.arrays, where the index of each array is
+                the gradient calculated corresponding to that input index
             alpha (float) from 0 to 1: hyper parameter
             beta (float) from 0 to 1: hyper parameter
             eps (float): small number to prevent priority staying as 0
+
+        Returns:
+            weight_change (list[nd.array]): Accumulated importance-sampling weights
         """
 
-        # Compute importance-sampling weight
-        P_j = np.power(np.array([memory_instance.priority for memory_instance in self.data]), alpha)
-        P_j /= np.sum(P_j)
-        # # TODO: define N as size of replay buffer?
-        # importance_sampling_weight = np.power(self.N * P_j, 0. - beta)
-        # importance_sampling_weight /= np.max(importance_sampling_weight)
+        # Calculate probabilities of drawing each item based on softmax.
+        probabilities_of_drawing = np.power(np.array([memory_instance.priority for memory_instance in self.data]), alpha)
+        probabilities_of_drawing /= np.sum(probabilities_of_drawing)
+
+        # Calculate importance sampling weights over the whole buffer
+        importance_sampling_weights = np.power(len(self.data) * probabilities_of_drawing, -beta)
+        importance_sampling_weights /= np.max(importance_sampling_weights)
 
         # Calculate the TD-error of the batch
         td_error = rs - q
-               
-        # Update transition priotities
-        for i, idx_to_update in enumerate(indices):
-            self.data[idx_to_update].priority = np.abs(td_error[i]) + eps
+        new_priorities = np.abs(td_error) + eps
 
-        # Accumulate weight-change delta
-        # TODO(liangqiyao990210): Calculate the weight_change and figure out how to actually return it
-        # and use it to update weights 
+        # Calculate weight changes
+        weight_changes = []
+        for i, gradient in enumerate(gradients):
+            # Expand dims to allow vectorization of multiply with gradients
+            scalar_multiples = np.expand_dims(importance_sampling_weights[indices] * new_priorities, axis=(tuple(range(1, 4))))
+            scaled_gradient = np.sum(scalar_multiples * gradient, axis=0)
+            weight_changes.append(scaled_gradient)
+
+        self.update_priorities({idx_to_update : new_priority for idx_to_update, new_priority in zip(indices, new_priorities)})
+
+        return weight_changes
+
+    def update_priorities(self, new_priorities): 
+        """Update priorities of items in the buffer.
+       
+        Parameters:
+            new_priorities (dict<int, float>): dictionary where key is index to update and value
+                is the new priority to set.
+        """
+        for idx_to_update, new_priority in new_priorities.items():
+            self.data[idx_to_update].priority = new_priority
