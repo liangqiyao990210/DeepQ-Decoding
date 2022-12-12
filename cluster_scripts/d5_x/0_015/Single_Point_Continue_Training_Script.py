@@ -38,9 +38,9 @@ variable_config_number = sys.argv[1]
 base_directory = os.path.dirname(os.getcwd())
 # base_directory = os.getcwd()
 
-variable_configs_folder = os.path.join(base_directory, "./config_"+str(variable_config_number) + "/")
+variable_configs_folder = os.path.join(base_directory, "config_"+str(variable_config_number) + "/")
 variable_configs_path = os.path.join(variable_configs_folder, "variable_config_"+variable_config_number + ".p" )
-fixed_configs_path = os.path.join(base_directory, "../fixed_config.p")
+fixed_configs_path = os.path.join(base_directory, "fixed_config.p")
 fixed_configs = pickle.load( open(fixed_configs_path, "rb" ) )
 variable_configs = pickle.load( open(variable_configs_path, "rb" ) )
 
@@ -140,8 +140,8 @@ dqn = DQNAgent(model=model,
 
 dqn.compile(Adam(lr=all_configs["learning_rate"]))
 
-initial_weights_file = os.path.join(variable_configs_folder, "initial_dqn_weights.h5f")
-dqn.model.load_weights(initial_weights_file)
+# initial_weights_file = os.path.join(variable_configs_folder, "initial_dqn_weights.h5f")
+# dqn.model.load_weights(initial_weights_file)
 
 # -------------------------------------------------------------------------------------------
 
@@ -167,7 +167,9 @@ history = dqn.fit(env,
 
 # --------------------------------------------------------------------------------------------
 
+memory_file = os.path.join(variable_configs_folder,"memory.p")
 pickle.dump(dqn.memory, open(memory_file, "wb" ) )
+
 final_weights_file = os.path.join(variable_configs_folder, "final_dqn_weights.h5f")
 dqn.save_weights(final_weights_file, overwrite=True)
 
