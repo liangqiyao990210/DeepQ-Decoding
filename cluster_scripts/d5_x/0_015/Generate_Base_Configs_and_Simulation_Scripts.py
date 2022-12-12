@@ -63,6 +63,7 @@ for ls in learning_starts_list:
                                 "max_eps": me,
                                 "target_network_update_freq": tnuf,
                                 "gamma": g,
+                                "alpha": alpha,
                                 "final_eps": fe}
 
                                 config_directory = os.path.join(cwd,"config_"+str(config_counter)+"/")
@@ -80,7 +81,7 @@ for ls in learning_starts_list:
                                 job_name=str(p_phys)+"_"+str(config_counter)
                                 output_file = os.path.join(cwd,"output_files/out_"+job_name+".out")
                                 error_file = os.path.join(cwd,"output_files/err_"+job_name+".err")
-                                python_script = os.path.join(cwd, "Single_Point_Training_Script.py")
+                                python_script = os.path.join(cwd, "Single_Point_Continue_Training_Script.py")
 
 
                                 f = open(config_directory + "/simulation_script.sh",'w')  
@@ -92,8 +93,8 @@ for ls in learning_starts_list:
 #SBATCH --mail-type=END
 #SBATCH --mail-user=ql94@duke.edu	       # It will send you an email when the job is finished. 
 #SBATCH --mem=1G                   # Memory per cpu in MB (see also --mem) 
-#SBATCH --output='''+output_file+'''         # File to which standard out will be written
-#SBATCH --error='''+error_file+'''           # File to which standard err will be written
+#SBATCH --output=out.out         # File to which standard out will be written
+#SBATCH --error=slurm.err           # File to which standard err will be written
 
 # store job info in output file, if you want...
 scontrol show job $SLURM_JOBID
