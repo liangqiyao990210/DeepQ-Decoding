@@ -246,7 +246,7 @@ class DQNAgent(AbstractDQNAgent):
     def backward(self, reward, terminal):
         if self.enable_prioritized_replay:
             ############### Catherine: need to compute TD error ###############
-            self.memory.append(1., self.recent_state0, self.recent_action, reward, self.recent_state1, terminal, training=self.training)
+            self.memory.append(self.recent_state0, self.recent_action, reward, self.recent_state1, terminal, training=self.training)
             ############### Catherine: need to figure out the structure to append the recent experience based on the metric ###############
         else:
             # Store most recent experience in memory.

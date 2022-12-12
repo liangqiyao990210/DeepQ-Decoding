@@ -395,7 +395,7 @@ class PrioritizedMemory(Memory):
         if batch_idxs is None:
             # Draw random indexes such that we have enough entries before each index to fill the
             # desired window length.
-            sample_probabilities = np.power(np.array([memory_instance.priority for memory_instance in self.data]), alpha)
+            sample_probabilities = np.power(self.get_priorities(), alpha)
             sample_probabilities /= np.sum(sample_probabilities)
             batch_idxs = random.choices(range(len(self.data)),
                                        sample_probabilities, 
@@ -408,11 +408,12 @@ class PrioritizedMemory(Memory):
         experiences = []
         for idx in batch_idxs:
             sampled_experience = self.data[idx]
+            print('sampled exp priority: ', sampled_experience.priority)
             experiences.append(Experience(sampled_experience.state0, sampled_experience.action, sampled_experience.reward, sampled_experience.state1, sampled_experience.terminal))
 
         return batch_idxs, experiences
 
-    def append(self, priority, state0, action, reward, state1, terminal, training=True):
+    def append(self, state0, action, reward, state1, terminal, training=True):
         """Append an observation to the memory
 
         # Argument
@@ -430,6 +431,10 @@ class PrioritizedMemory(Memory):
         # and weather the next state is `terminal` or not.
 
         if training:
+            if len(self.data)==0:
+                priority = 1
+            else:
+                priority = np.max(self.get_priorities())
             prioritized_experience = PrioritizedExperience(priority, state0, action, reward, state1, terminal)
             self.data.append(prioritized_experience)
             while len(self.data) >= self.limit:
@@ -445,7 +450,7 @@ class PrioritizedMemory(Memory):
         return len(self.data)
 
     def get_config(self):
-        """Return configurations of SequentialMemory
+        """Return configurations of PrioritizedMemory
 
         # Returns
             Dict of config
@@ -453,6 +458,14 @@ class PrioritizedMemory(Memory):
         config = super(SequentialMemory, self).get_config()
         # config['limit'] = self.limit
         return config
+
+    def get_priorities(self):
+        """Return list of priorities
+
+        # Returns
+            list of priorities
+        """
+        return np.array([memory_instance.priority for memory_instance in self.data])
 
     def update_priorities(self, indices, td_errors, eps=1e-3): 
         """Update priorities of items in the buffer.
