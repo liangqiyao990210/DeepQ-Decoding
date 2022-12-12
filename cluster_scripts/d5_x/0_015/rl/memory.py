@@ -396,8 +396,8 @@ class PrioritizedMemory(Memory):
             # Draw random indexes such that we have enough entries before each index to fill the
             # desired window length.
             sample_probabilities = np.power(np.array([memory_instance.priority for memory_instance in self.data]), alpha)
-            print('sum of priorities: ', np.sum(sample_probabilities))
-            sample_probabilities /= np.sum(sample_probabilities)
+           # print('sum of priorities: ', np.sum(sample_probabilities))
+            sample_probabilities =  sample_probabilities / np.sum(sample_probabilities)
             batch_idxs = random.choices(range(len(self.data)),
                                        sample_probabilities, 
                                        k=batch_size)
@@ -435,7 +435,7 @@ class PrioritizedMemory(Memory):
                 priority = 1
             else:
                 priority = np.max(self.get_priorities())
-            print('append priority: ', priority)
+            #print('append priority: ', priority)
             prioritized_experience = PrioritizedExperience(priority, state0, action, reward, state1, terminal)
             self.data.append(prioritized_experience)
             while len(self.data) >= self.limit:
