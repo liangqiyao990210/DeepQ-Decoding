@@ -40,7 +40,6 @@ base_directory = os.getcwd()
 variable_configs_folder = os.path.join(base_directory, "./config_"+str(variable_config_number) + "/")
 variable_configs_path = os.path.join(variable_configs_folder, "variable_config_"+variable_config_number + ".p" )
 fixed_configs_path = os.path.join(base_directory, "../fixed_config.p")
-
 fixed_configs = pickle.load( open(fixed_configs_path, "rb" ) )
 variable_configs = pickle.load( open(variable_configs_path, "rb" ) )
 
@@ -53,6 +52,7 @@ for key in variable_configs.keys():
     all_configs[key] = variable_configs[key]
 
 if fixed_configs["static_decoder"]:
+  print(os.path.join(base_directory, "../static_decoder"))
   static_decoder = load_model(os.path.join(base_directory, "../static_decoder"))
 else:
   static_decoder = None

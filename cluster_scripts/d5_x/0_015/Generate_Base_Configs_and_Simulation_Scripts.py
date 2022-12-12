@@ -25,7 +25,8 @@ fixed_config = {"d": 5,
                 "masked_greedy": False,
                 "static_decoder": True}
 
-fixed_config_path = os.path.join(cwd, "../fixed_config.p")
+fixed_config_path = os.path.join(cwd, "fixed_config.p")
+print(fixed_config_path)
 pickle.dump(fixed_config, open(fixed_config_path, "wb" ) )
 
 # ---------- The variable parameters grid --------------------------------------------------------------
