@@ -395,7 +395,8 @@ class PrioritizedMemory(Memory):
         if batch_idxs is None:
             # Draw random indexes such that we have enough entries before each index to fill the
             # desired window length.
-            sample_probabilities = np.power(self.get_priorities(), alpha)
+            sample_probabilities = np.power(np.array([memory_instance.priority for memory_instance in self.data]), alpha)
+            print('sum of priorities: ', np.sum(sample_probabilities))
             sample_probabilities /= np.sum(sample_probabilities)
             batch_idxs = random.choices(range(len(self.data)),
                                        sample_probabilities, 
