@@ -35,7 +35,7 @@ import datetime
 # ---------------------------------------------------------------------------------------------
 
 variable_config_number = sys.argv[1]
-base_directory = os.getcwd()
+base_directory = os.path.dirname(os.getcwd())
 
 variable_configs_folder = os.path.join(base_directory, "./config_"+str(variable_config_number) + "/")
 variable_configs_path = os.path.join(variable_configs_folder, "variable_config_"+variable_config_number + ".p" )
