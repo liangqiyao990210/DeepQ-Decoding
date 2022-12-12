@@ -252,7 +252,8 @@ class DQNAgent(AbstractDQNAgent):
 
         # Train the network on a single stochastic batch.
         if self.step > self.nb_steps_warmup and self.step % self.train_interval == 0:
-            experiences = self.memory.sample(self.batch_size)
+            trajectories = []
+            experiences = self.memory.sample(self.batch_size, trajectories=trajectories)
             assert len(experiences) == self.batch_size
 
             # Start by extracting the necessary parameters (we use a vectorized implementation).
@@ -262,11 +263,15 @@ class DQNAgent(AbstractDQNAgent):
             terminal1_batch = []
             state1_batch = []
             for e in experiences:
-                state0_batch.append(e.state0[0])
-                state1_batch.append(e.state1[0])
+                state0_batch.append(e.state0[-1])
+                state1_batch.append(e.state1[-1])
                 reward_batch.append(e.reward)
                 action_batch.append(e.action)
                 terminal1_batch.append(0. if e.terminal1 else 1.)
+                
+            trajectory_batch = []
+            for t in trajectories:
+                trajectory_batch.append(np.array(t))
 
             # Prepare and validate parameters.
             state0_batch = self.process_state_batch(state0_batch)
@@ -276,6 +281,11 @@ class DQNAgent(AbstractDQNAgent):
             assert reward_batch.shape == (self.batch_size,)
             assert terminal1_batch.shape == reward_batch.shape
             assert len(action_batch) == len(reward_batch)
+            
+            trajectory_batch = np.array([np.dot(trajectory, [self.gamma**i for i in range(len(trajectory))]) for trajectory in trajectory_batch])
+            assert trajectory_batch.shape == (self.batch_size,)
+            assert terminal1_batch.shape == trajectory_batch.shape
+            assert len(action_batch) == len(trajectory_batch) 
 
             # Compute Q values for mini-batch update.
             if self.enable_double_dqn:
@@ -307,11 +317,11 @@ class DQNAgent(AbstractDQNAgent):
 
             # Compute r_t + gamma * max_a Q(s_t+1, a) and update the target targets accordingly,
             # but only for the affected output units (as given by action_batch).
-            discounted_reward_batch = self.gamma * q_batch
+            discounted_reward_batch = self.gamma**self.memory.nsteps * q_batch
             # Set discounted reward to zero for all states that were terminal.
             discounted_reward_batch *= terminal1_batch
             assert discounted_reward_batch.shape == reward_batch.shape
-            Rs = reward_batch + discounted_reward_batch
+            Rs = trajectory_batch + discounted_reward_batch
             for idx, (target, mask, R, action) in enumerate(zip(targets, masks, Rs, action_batch)):
                 target[action] = R  # update action with estimated accumulated reward
                 dummy_targets[idx] = R

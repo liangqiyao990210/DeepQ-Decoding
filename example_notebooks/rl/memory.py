@@ -105,7 +105,8 @@ def zeroed_observation(observation):
 
 class Memory(object):
     def __init__(self, window_length, ignore_episode_boundaries=False):
-        self.window_length = window_length
+        # self.window_length = window_length
+        self.window_length = 1
         self.ignore_episode_boundaries = ignore_episode_boundaries
 
         self.recent_observations = deque(maxlen=window_length)
@@ -157,10 +158,11 @@ class Memory(object):
         return config
 
 class SequentialMemory(Memory):
-    def __init__(self, limit, **kwargs):
+    def __init__(self, limit, nsteps, **kwargs):
         super(SequentialMemory, self).__init__(**kwargs)
         
         self.limit = limit
+        self.nsteps = nsteps
 
         # Do not use deque to implement the memory. This data structure may seem convenient but
         # it is way too slow on random access. Instead, we use our own ring buffer implementation.
@@ -169,7 +171,7 @@ class SequentialMemory(Memory):
         self.terminals = RingBuffer(limit)
         self.observations = RingBuffer(limit)
 
-    def sample(self, batch_size, batch_idxs=None):
+    def sample(self, batch_size, batch_idxs=None, trajectories=[]):
         """Return a randomized batch of experiences
 
         # Argument
@@ -183,15 +185,15 @@ class SequentialMemory(Memory):
         # we will never return this first state (only using `self.terminals[0]` to know whether the
         # second state is terminal).
         # In addition we need enough entries to fill the desired window length.
-        assert self.nb_entries >= self.window_length + 2, 'not enough entries in the memory'
+        assert self.nb_entries >= self.nsteps + 2, 'not enough entries in the memory'
 
         if batch_idxs is None:
             # Draw random indexes such that we have enough entries before each index to fill the
             # desired window length.
             batch_idxs = sample_batch_indexes(
-                self.window_length, self.nb_entries - 1, size=batch_size)
+                self.nsteps, self.nb_entries - 1, size=batch_size)
         batch_idxs = np.array(batch_idxs) + 1
-        assert np.min(batch_idxs) >= self.window_length + 1
+        assert np.min(batch_idxs) >= self.nsteps + 1
         assert np.max(batch_idxs) < self.nb_entries
         assert len(batch_idxs) == batch_size
 
@@ -203,15 +205,16 @@ class SequentialMemory(Memory):
                 # Skip this transition because the environment was reset here. Select a new, random
                 # transition and use this instead. This may cause the batch to contain the same
                 # transition twice.
-                idx = sample_batch_indexes(self.window_length + 1, self.nb_entries, size=1)[0]
+                idx = sample_batch_indexes(self.nsteps + 1, self.nb_entries, size=1)[0]
                 terminal0 = self.terminals[idx - 2]
-            assert self.window_length + 1 <= idx < self.nb_entries
+            assert self.nsteps + 1 <= idx < self.nb_entries
 
             # This code is slightly complicated by the fact that subsequent observations might be
             # from different episodes. We ensure that an experience never spans multiple episodes.
             # This is probably not that important in practice but it seems cleaner.
             state0 = [self.observations[idx - 1]]
-            for offset in range(0, self.window_length - 1):
+            trajectory = [self.rewards[idx-1]]
+            for offset in range(0, self.nsteps - 1):
                 current_idx = idx - 2 - offset
                 assert current_idx >= 1
                 current_terminal = self.terminals[current_idx - 1]
@@ -220,7 +223,8 @@ class SequentialMemory(Memory):
                     # Otherwise we would leak into a different episode.
                     break
                 state0.insert(0, self.observations[current_idx])
-            while len(state0) < self.window_length:
+                trajectory.insert(0, self.rewards[current_idx])
+            while len(state0) < self.nsteps:
                 state0.insert(0, zeroed_observation(state0[0]))
             action = self.actions[idx - 1]
             reward = self.rewards[idx - 1]
@@ -232,10 +236,11 @@ class SequentialMemory(Memory):
             state1 = [np.copy(x) for x in state0[1:]]
             state1.append(self.observations[idx])
 
-            assert len(state0) == self.window_length
+            assert len(state0) == self.nsteps
             assert len(state1) == len(state0)
             experiences.append(Experience(state0=state0, action=action, reward=reward,
                                           state1=state1, terminal1=terminal1))
+            trajectories.append(trajectory)
         assert len(experiences) == batch_size
         return experiences
 
