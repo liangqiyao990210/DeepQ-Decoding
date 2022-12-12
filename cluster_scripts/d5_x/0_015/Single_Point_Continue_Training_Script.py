@@ -11,8 +11,8 @@ from keras.layers import Conv2D, MaxPooling2D, ZeroPadding2D, GlobalAveragePooli
 from keras.layers.advanced_activations import LeakyReLU 
 from keras.preprocessing.image import ImageDataGenerator
 
-# import sys
-# import os
+import sys
+import os
 # cwd = os.getcwd()
 # sys.path.append(cwd+'/../rl')
 import rl as rl
@@ -117,9 +117,9 @@ policy = LinearAnnealedPolicy(EpsGreedyQPolicy(masked_greedy=all_configs["masked
 test_policy = GreedyQPolicy(masked_greedy=True)
 ENABLE_PRIORITIZED_REPLAY = True
 if ENABLE_PRIORITIZED_REPLAY:
-    memory = PrioritizedMemory(limit=all_configs["buffer_size"], window_length=1)
+  memory = PrioritizedMemory(limit=all_configs["buffer_size"], window_length=1)
 else:
-    memory = SequentialMemory(limit=all_configs["buffer_size"], window_length=1)
+  memory = SequentialMemory(limit=all_configs["buffer_size"], window_length=1)
 
 # ------------------------------------------------------------------------------------------
 
@@ -172,7 +172,10 @@ dqn.save_weights(final_weights_file, overwrite=True)
 # -------------------------------------------------------------------------------------------
 
 model = build_convolutional_nn(all_configs["c_layers"],all_configs["ff_layers"], env.observation_space.shape, env.num_actions)
-memory = SequentialMemory(limit=all_configs["buffer_size"], window_length=1)
+if ENABLE_PRIORITIZED_REPLAY:
+  memory = PrioritizedMemory(limit=all_configs["buffer_size"], window_length=1)
+else:
+  memory = SequentialMemory(limit=all_configs["buffer_size"], window_length=1)
 policy = GreedyQPolicy(masked_greedy=True)
 test_policy = GreedyQPolicy(masked_greedy=True)
 
