@@ -167,8 +167,8 @@ history = dqn.fit(env,
 
 # --------------------------------------------------------------------------------------------
 
-memory_file = os.path.join(variable_configs_folder,"memory.p")
-pickle.dump(dqn.memory, open(memory_file, "wb" ) )
+#memory_file = os.path.join(variable_configs_folder,"memory.p")
+#pickle.dump(dqn.memory, open(memory_file, "wb" ) )
 
 final_weights_file = os.path.join(variable_configs_folder, "final_dqn_weights.h5f")
 dqn.save_weights(final_weights_file, overwrite=True)
