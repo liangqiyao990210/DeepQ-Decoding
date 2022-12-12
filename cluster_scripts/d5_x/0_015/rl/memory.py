@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from collections import deque, namedtuple
 import warnings
 import random
-from sortedcontainers import SortedList
+# from sortedcontainers import SortedList
 from dataclasses import dataclass
 
 import numpy as np
@@ -83,38 +83,6 @@ class RingBuffer(object):
             # This should never happen.
             raise RuntimeError()
         self.data[(self.start + self.length - 1) % self.maxlen] = v
-
-
-class SortedBuffer(object):
-    def __init__(self, maxlen):
-        self.maxlen = maxlen
-        self.start = 0
-        self.length = 0
-        self.data = SortedList()
-
-    def __len__(self):
-        return self.length
-
-    def __getitem__(self, idx):
-        """Return element of buffer at specific index
-
-        # Argument
-            idx (int): Index wanted
-
-        # Returns
-            The element of buffer at given index
-        """
-        if idx < 0 or idx >= self.length:
-            raise KeyError()
-        return self.data[idx]
-
-    def append(self, v):
-        """Append an element to the buffer
-
-        # Argument
-            v (object): Element to append
-        """
-        self.data.add(v)
 
 
 def zeroed_observation(observation):

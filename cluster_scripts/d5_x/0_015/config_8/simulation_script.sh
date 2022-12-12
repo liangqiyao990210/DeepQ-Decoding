@@ -6,8 +6,8 @@
 #SBATCH --mail-type=END
 #SBATCH --mail-user=ql94@duke.edu	       # It will send you an email when the job is finished. 
 #SBATCH --mem=1G                   # Memory per cpu in MB (see also --mem) 
-#SBATCH --output=/hpc/home/ql94/DeepQ-Decoding/cluster_scripts/d5_x/0_015/output_files/out_0.015_8.out         # File to which standard out will be written
-#SBATCH --error=/hpc/home/ql94/DeepQ-Decoding/cluster_scripts/d5_x/0_015/output_files/err_0.015_8.err           # File to which standard err will be written
+#SBATCH --output=out.out         # File to which standard out will be written
+#SBATCH --error=slurm.err           # File to which standard err will be written
 
 # store job info in output file, if you want...
 scontrol show job $SLURM_JOBID
@@ -23,7 +23,7 @@ scontrol show job $SLURM_JOBID
 
 # ------- run the script -----------------------
 
-python /hpc/home/ql94/DeepQ-Decoding/cluster_scripts/d5_x/0_015/Single_Point_Training_Script.py 8
+python /hpc/home/ql94/DeepQ-Decoding/cluster_scripts/d5_x/0_015/Single_Point_Continue_Training_Script.py 8
 
 #----------- wait some time ------------------------------------
 
