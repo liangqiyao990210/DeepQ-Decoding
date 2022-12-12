@@ -113,10 +113,6 @@ class Memory(object):
         self.recent_observations = deque(maxlen=window_length)
         self.recent_terminals = deque(maxlen=window_length)
 
-        # self.memory is a SortedList containing tuples of the type
-        # (metric_value, (observation, action, reward, terminal))
-        # self.memory = SortedList()
-
     def sample(self, batch_size, batch_idxs=None):
         raise NotImplementedError()
 
@@ -436,7 +432,7 @@ class PrioritizedMemory(Memory):
         if training:
             prioritized_experience = PrioritizedExperience(priority, state0, action, reward, state1, terminal)
             self.data.append(prioritized_experience)
-            if len(self.data) >= self.limit:
+            while len(self.data) >= self.limit:
                 self.data.pop(0)
 
     @property
