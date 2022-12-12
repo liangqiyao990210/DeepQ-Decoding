@@ -52,8 +52,8 @@ for key in variable_configs.keys():
     all_configs[key] = variable_configs[key]
 
 if fixed_configs["static_decoder"]:
-  print(os.path.join(base_directory, "../static_decoder"))
-  static_decoder = load_model(os.path.join(base_directory, "../static_decoder"))
+  print(os.path.join(base_directory, "referee_decoders/nn_d5_X_p5"))
+  static_decoder = load_model(os.path.join(base_directory, "referee_decoders/nn_d5_X_p5"))
 else:
   static_decoder = None
 
