@@ -232,7 +232,7 @@ while keep_evaluating:
     pickle.dump(results, open(results_file, "wb" ))
 
   to_beat = thresholds[count]
-  if final_result < to_beat or count == (num_to_test - 1):
+  if count == (num_to_test - 1):
     keep_evaluating = False
 
   count += 1
