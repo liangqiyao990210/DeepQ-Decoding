@@ -23,7 +23,7 @@ scontrol show job $SLURM_JOBID
 
 # ------- run the script -----------------------
 
-python Single_Point_Continue_Training_Script.py 1
+python /hpc/home/ql94/DeepQ-Decoding/cluster_scripts/d5_x/0_015/Single_Point_Continue_Training_Script.py 1
 
 #----------- wait some time ------------------------------------
 
