@@ -408,7 +408,6 @@ class PrioritizedMemory(Memory):
         experiences = []
         for idx in batch_idxs:
             sampled_experience = self.data[idx]
-            print('sampled exp priority: ', sampled_experience.priority)
             experiences.append(Experience(sampled_experience.state0, sampled_experience.action, sampled_experience.reward, sampled_experience.state1, sampled_experience.terminal))
 
         return batch_idxs, experiences
@@ -435,6 +434,7 @@ class PrioritizedMemory(Memory):
                 priority = 1
             else:
                 priority = np.max(self.get_priorities())
+            print('append priority: ', priority)
             prioritized_experience = PrioritizedExperience(priority, state0, action, reward, state1, terminal)
             self.data.append(prioritized_experience)
             while len(self.data) >= self.limit:
