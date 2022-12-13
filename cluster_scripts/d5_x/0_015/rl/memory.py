@@ -2,25 +2,22 @@ from __future__ import absolute_import
 from collections import deque, namedtuple
 import warnings
 import random
-# from sortedcontainers import SortedList
-from dataclasses import dataclass
 
 import numpy as np
-
 
 # This is to be understood as a transition: Given `state0`, performing `action`
 # yields `reward` and results in `state1`, which might be `terminal`.
 Experience = namedtuple('Experience', 'state0, action, reward, state1, terminal1')
-ReplayParams = namedtuple('ReplayParams', 'priority, probability, weight, index')
 
-def sample_batch_indexes(low, high, size):
+
+def sample_batch_indexes(low, high, size, priorities=None, alpha=0.0):
     """Return a sample of (size) unique elements between low and high
-
         # Argument
             low (int): The minimum value for our samples
             high (int): The maximum value for our samples
             size (int): The number of samples to pick
-
+            priorities (list of floats): Priorities of sampled items to use. 
+                None if using uniform choice.
         # Returns
             A list of samples of length size, with values between low and high
         """
@@ -29,15 +26,20 @@ def sample_batch_indexes(low, high, size):
         # batch. We cannot use `np.random.choice` here because it is horribly inefficient as
         # the memory grows. See https://github.com/numpy/numpy/issues/2764 for a discussion.
         # `random.sample` does the same thing (drawing without replacement) and is way faster.
-        try:
-            r = xrange(low, high)
-        except NameError:
-            r = range(low, high)
-        batch_idxs = random.sample(r, size)
+        r = range(low, high)
+        if priorities is None:
+            batch_idxs = random.sample(r, size)
+        else:
+            # Discard the first priority, since the starting state0 corresponding to it no longer is in the buffer.
+            # assert high - low == len(priorities), "Length of priorities must match the size of the index sampling window."
+            probabilities = np.power(np.array(priorities), alpha)[2:]
+            probabilities = probabilities / np.sum(probabilities)
+            batch_idxs = np.random.choice(r, size, p=probabilities)
     else:
         # Not enough data. Help ourselves with sampling from the range, but the same index
         # can occur multiple times. This is not good and should be avoided by picking a
-        # large enough warm-up phase.
+        # large enough warm-up phase. Since this only occurs at the beginning of training,
+        # we ignore priorities (the priorities should be all the same at this point).
         warnings.warn('Not enough entries to sample without replacement. Consider increasing your warm-up phase to avoid oversampling!')
         batch_idxs = np.random.random_integers(low, high - 1, size=size)
     assert len(batch_idxs) == size
@@ -56,10 +58,8 @@ class RingBuffer(object):
 
     def __getitem__(self, idx):
         """Return element of buffer at specific index
-
         # Argument
             idx (int): Index wanted
-
         # Returns
             The element of buffer at given index
         """
@@ -67,9 +67,30 @@ class RingBuffer(object):
             raise KeyError()
         return self.data[(self.start + idx) % self.maxlen]
 
+    def __setitem__(self, idx, v):
+        """Set element of buffer at specific index to a new value v
+        # Argument
+            idx (int): Index of element to set
+            v (int): New value of item
+        """
+        if idx < 0 or idx >= self.length:
+            raise KeyError()
+        self.data[(self.start + idx) % self.maxlen] = v
+
+    # This could potentially be a performance bottleneck if since it is called every time
+    # memory.append() is called.
+    def get_max(self):
+        """Return maximum value of buffer.
+        # Returns
+            The maximal value contained in the buffer.
+        """
+        if self.length > 0:
+            return max([v for v in self.data if v is not None])
+        else:
+            return 1
+
     def append(self, v):
         """Append an element to the buffer
-
         # Argument
             v (object): Element to append
         """
@@ -87,7 +108,6 @@ class RingBuffer(object):
 
 def zeroed_observation(observation):
     """Return an array of zeros with same shape as given observation
-
     # Argument
         observation (list): List of observation
     
@@ -122,10 +142,8 @@ class Memory(object):
 
     def get_recent_state(self, current_observation):
         """Return list of last observations
-
         # Argument
             current_observation (object): Last observation
-
         # Returns
             A list of the last observations
         """
@@ -159,10 +177,11 @@ class Memory(object):
         return config
 
 class SequentialMemory(Memory):
-    def __init__(self, limit, **kwargs):
+    def __init__(self, limit, enable_prioritized_replay=False, **kwargs):
         super(SequentialMemory, self).__init__(**kwargs)
         
         self.limit = limit
+        self.enable_prioritized_replay = enable_prioritized_replay
 
         # Do not use deque to implement the memory. This data structure may seem convenient but
         # it is way too slow on random access. Instead, we use our own ring buffer implementation.
@@ -170,10 +189,11 @@ class SequentialMemory(Memory):
         self.rewards = RingBuffer(limit)
         self.terminals = RingBuffer(limit)
         self.observations = RingBuffer(limit)
+        if self.enable_prioritized_replay:
+            self.priorities = RingBuffer(limit)
 
-    def sample(self, batch_size, batch_idxs=None):
+    def sample(self, batch_size, batch_idxs=None, alpha=0.0):
         """Return a randomized batch of experiences
-
         # Argument
             batch_size (int): Size of the all batch
             batch_idxs (int): Indexes to extract
@@ -190,14 +210,21 @@ class SequentialMemory(Memory):
         if batch_idxs is None:
             # Draw random indexes such that we have enough entries before each index to fill the
             # desired window length.
-            batch_idxs = sample_batch_indexes(
-                self.window_length, self.nb_entries - 1, size=batch_size)
+            if self.enable_prioritized_replay:
+                # Get priorities starting from current "idx" of the RingBuffer
+                priorities = [self.priorities[idx] for idx in range(self.nb_entries)]
+            
+                batch_idxs = sample_batch_indexes(self.window_length, self.nb_entries - 1, size=batch_size, priorities=priorities, alpha=alpha)
+            else:
+                batch_idxs = sample_batch_indexes(
+                        self.window_length, self.nb_entries - 1, size=batch_size)
         batch_idxs = np.array(batch_idxs) + 1
         assert np.min(batch_idxs) >= self.window_length + 1
         assert np.max(batch_idxs) < self.nb_entries
         assert len(batch_idxs) == batch_size
 
         # Create experiences
+        sampled_indexes = []
         experiences = []
         for idx in batch_idxs:
             terminal0 = self.terminals[idx - 2]
@@ -205,7 +232,11 @@ class SequentialMemory(Memory):
                 # Skip this transition because the environment was reset here. Select a new, random
                 # transition and use this instead. This may cause the batch to contain the same
                 # transition twice.
-                idx = sample_batch_indexes(self.window_length + 1, self.nb_entries, size=1)[0]
+                
+                if self.enable_prioritized_replay:
+                    idx = sample_batch_indexes(self.window_length + 1, self.nb_entries, size=1, priorities=priorities, alpha=alpha)[0]
+                else:
+                    idx = sample_batch_indexes(self.window_length + 1, self.nb_entries, size=1)[0]
                 terminal0 = self.terminals[idx - 2]
             assert self.window_length + 1 <= idx < self.nb_entries
 
@@ -236,14 +267,14 @@ class SequentialMemory(Memory):
 
             assert len(state0) == self.window_length
             assert len(state1) == len(state0)
+            sampled_indexes.append(idx)
             experiences.append(Experience(state0=state0, action=action, reward=reward,
                                           state1=state1, terminal1=terminal1))
         assert len(experiences) == batch_size
-        return experiences
+        return sampled_indexes, experiences
 
     def append(self, observation, action, reward, terminal, training=True):
         """Append an observation to the memory
-
         # Argument
             observation (dict): Observation returned by environment
             action (int): Action taken to obtain this observation
@@ -259,11 +290,12 @@ class SequentialMemory(Memory):
             self.actions.append(action)
             self.rewards.append(reward)
             self.terminals.append(terminal)
+            if self.enable_prioritized_replay:
+                self.priorities.append(self.priorities.get_max())
 
     @property
     def nb_entries(self):
         """Return number of observations
-
         # Returns
             Number of observations
         """
@@ -271,13 +303,26 @@ class SequentialMemory(Memory):
 
     def get_config(self):
         """Return configurations of SequentialMemory
-
         # Returns
             Dict of config
         """
         config = super(SequentialMemory, self).get_config()
         config['limit'] = self.limit
         return config
+
+    def update_priorities(self, indices, td_errors, eps=1e-3):
+        """Update priorities of items in the buffer.
+       
+        Parameters:
+            indices (list of indices): indices of data that was sampled from the buffer to be updated
+            td_errors (list of floats): td_errors for the data points that were sampled
+            eps (float): small number to prevent priority staying as 0
+        """
+        new_priorities = np.abs(td_errors) + eps
+
+        # Update priorities
+        for idx_to_update, new_priority in zip(indices, new_priorities):
+            self.priorities[idx_to_update] = new_priority
 
 
 class EpisodeParameterMemory(Memory):
@@ -291,7 +336,6 @@ class EpisodeParameterMemory(Memory):
 
     def sample(self, batch_size, batch_idxs=None):
         """Return a randomized batch of params and rewards
-
         # Argument
             batch_size (int): Size of the all batch
             batch_idxs (int): Indexes to extract
@@ -311,7 +355,6 @@ class EpisodeParameterMemory(Memory):
 
     def append(self, observation, action, reward, terminal, training=True):
         """Append a reward to the memory
-
         # Argument
             observation (dict): Observation returned by environment
             action (int): Action taken to obtain this observation
@@ -324,7 +367,6 @@ class EpisodeParameterMemory(Memory):
 
     def finalize_episode(self, params):
         """Append an observation to the memory
-
         # Argument
             observation (dict): Observation returned by environment
             action (int): Action taken to obtain this observation
@@ -339,7 +381,6 @@ class EpisodeParameterMemory(Memory):
     @property
     def nb_entries(self):
         """Return number of episode rewards
-
         # Returns
             Number of episode rewards
         """
@@ -347,137 +388,9 @@ class EpisodeParameterMemory(Memory):
 
     def get_config(self):
         """Return configurations of SequentialMemory
-
         # Returns
             Dict of config
         """
         config = super(SequentialMemory, self).get_config()
         config['limit'] = self.limit
         return config
-
-
-class PrioritizedExperience():
-    def __init__(self, priority, state0, action, reward, state1, terminal):
-        self.priority = priority
-        self.state0 = state0
-        self.action = action 
-        self.reward = reward
-        self.state1 = state1
-        self.terminal = terminal
-
-
-class PrioritizedMemory(Memory):
-    def __init__(self, limit, **kwargs):
-        super(PrioritizedMemory, self).__init__(**kwargs)
-        
-        # Limit is ignored for now, so the list can grow arbitrarily large.
-        self.limit = limit
-
-        # self.memory contains MemoryInstances
-        self.data = []
-
-    def sample(self, batch_size, batch_idxs=None, alpha=0.7):
-        """Return a randomized batch of experiences
-
-        # Argument
-            batch_size (int): Size of the all batch
-            batch_idxs (int): Indexes to extract
-        # Returns
-            A list of experiences randomly selected
-        """
-        # It is not possible to tell whether the first state in the memory is terminal, because it
-        # would require access to the "terminal" flag associated to the previous state. As a result
-        # we will never return this first state (only using `self.terminals[0]` to know whether the
-        # second state is terminal).
-        # In addition we need enough entries to fill the desired window length.
-        assert self.nb_entries >= self.window_length + 2, 'not enough entries in the memory'
-
-        if batch_idxs is None:
-            # Draw random indexes such that we have enough entries before each index to fill the
-            # desired window length.
-            sample_probabilities = np.power(np.array([memory_instance.priority for memory_instance in self.data]), alpha)
-           # print('sum of priorities: ', np.sum(sample_probabilities))
-            sample_probabilities =  sample_probabilities / np.sum(sample_probabilities)
-            batch_idxs = random.choices(range(len(self.data)),
-                                       sample_probabilities, 
-                                       k=batch_size)
-        batch_idxs = np.array(batch_idxs)
-        assert np.max(batch_idxs) < self.nb_entries
-        assert len(batch_idxs) == batch_size
-
-        # Create experiences
-        experiences = []
-        for idx in batch_idxs:
-            sampled_experience = self.data[idx]
-            experiences.append(Experience(sampled_experience.state0, sampled_experience.action, sampled_experience.reward, sampled_experience.state1, sampled_experience.terminal))
-
-        return batch_idxs, experiences
-
-    def append(self, state0, action, reward, state1, terminal, training=True):
-        """Append an observation to the memory
-
-        # Argument
-            observation (dict): Observation returned by environment
-            action (int): Action taken to obtain this observation
-            reward (float): Reward obtained by taking this action
-            terminal (boolean): Is the state terminal
-        """
-        super().append(state1, action, reward, terminal, training=training)
-        
-        if state0 is None:
-            return
-
-        # This needs to be understood as follows: in `observation`, take `action`, obtain `reward`
-        # and weather the next state is `terminal` or not.
-
-        if training:
-            if len(self.data)==0:
-                priority = 1
-            else:
-                priority = np.max(self.get_priorities())
-            #print('append priority: ', priority)
-            prioritized_experience = PrioritizedExperience(priority, state0, action, reward, state1, terminal)
-            self.data.append(prioritized_experience)
-            while len(self.data) >= self.limit:
-                self.data.pop(0)
-
-    @property
-    def nb_entries(self):
-        """Return number of observations
-
-        # Returns
-            Number of observations
-        """
-        return len(self.data)
-
-    def get_config(self):
-        """Return configurations of PrioritizedMemory
-
-        # Returns
-            Dict of config
-        """
-        config = super(SequentialMemory, self).get_config()
-        # config['limit'] = self.limit
-        return config
-
-    def get_priorities(self):
-        """Return list of priorities
-
-        # Returns
-            list of priorities
-        """
-        return np.array([memory_instance.priority for memory_instance in self.data])
-
-    def update_priorities(self, indices, td_errors, eps=1e-3): 
-        """Update priorities of items in the buffer.
-       
-        Parameters:
-            indices (list of indices): indices of data that was sampled from the buffer to be updated
-            td_errors (list of floats): td_errors for the data points that were sampled
-            eps (float): small number to prevent priority staying as 0
-        """
-        new_priorities = np.abs(td_errors) + eps
-               
-        # Update transition priotities
-        for i, idx_to_update in enumerate(indices):
-            self.data[idx_to_update].priority = new_priorities[i]

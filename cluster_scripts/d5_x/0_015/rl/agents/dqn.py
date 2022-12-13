@@ -101,7 +101,8 @@ class DQNAgent(AbstractDQNAgent):
             `naive`: Q(s,a;theta) = V(s;theta) + A(s,a;theta) 
  
     """
-    def __init__(self, model, policy=None, test_policy=None, enable_double_dqn=True, enable_dueling_network=False, dueling_type='avg', enable_prioritized_replay=False, alpha=1.0, *args, **kwargs):
+    def __init__(self, model, policy=None, test_policy=None, enable_double_dqn=True, enable_dueling_network=False,
+                 dueling_type='avg', enable_prioritized_replay=True, alpha=0.0, *args, **kwargs):
         super(DQNAgent, self).__init__(*args, **kwargs)
 
         # Validate (important) input.
@@ -115,9 +116,8 @@ class DQNAgent(AbstractDQNAgent):
         self.enable_dueling_network = enable_dueling_network
         self.dueling_type = dueling_type
         self.enable_prioritized_replay = enable_prioritized_replay
-
         self.alpha = alpha
-        
+
         if self.enable_dueling_network:
             # get the second last layer of the model, abandon the last layer
             layer = model.layers[-2]
@@ -218,8 +218,7 @@ class DQNAgent(AbstractDQNAgent):
 
     def reset_states(self):
         self.recent_action = None
-        self.recent_state0 = None
-        self.recent_state1 = None
+        self.recent_observation = None
         if self.compiled:
             self.model.reset_states()
             self.target_model.reset_states()
@@ -237,23 +236,17 @@ class DQNAgent(AbstractDQNAgent):
             action = self.test_policy.select_action(q_values=q_values, legal_actions=legal_actions)
 
         # Book-keeping.
-        self.recent_state0 = self.recent_state1
-        self.recent_state1 = observation
+        self.recent_observation = observation
         self.recent_action = action
-    
+
         return action
 
     def backward(self, reward, terminal):
-        if self.enable_prioritized_replay:
-            ############### Catherine: need to compute TD error ###############
-            self.memory.append(self.recent_state0, self.recent_action, reward, self.recent_state1, terminal, training=self.training)
-            ############### Catherine: need to figure out the structure to append the recent experience based on the metric ###############
-        else:
-            # Store most recent experience in memory.
-            if self.step % self.memory_interval == 0:
-                self.memory.append(self.recent_state1, self.recent_action, reward, terminal,
-                                training=self.training)
-        
+        # Store most recent experience in memory.
+        if self.step % self.memory_interval == 0:
+            self.memory.append(self.recent_observation, self.recent_action, reward, terminal,
+                               training=self.training)
+
         metrics = [np.nan for _ in self.metrics_names]
         if not self.training:
             # We're done here. No need to update the experience memory since we only use the working
@@ -262,14 +255,8 @@ class DQNAgent(AbstractDQNAgent):
 
         # Train the network on a single stochastic batch.
         if self.step > self.nb_steps_warmup and self.step % self.train_interval == 0:
-            ######### START Catherine's implementation of prioritized experience replay ##############
-            if self.enable_prioritized_replay:
-                indices, experiences = self.memory.sample(self.batch_size, alpha=self.alpha)
-                assert len(experiences) == self.batch_size
-            ######### END Catherine's implementation of prioritized experience replay ##############
-            else:
-                experiences = self.memory.sample(self.batch_size)
-                assert len(experiences) == self.batch_size
+            sampled_indices, experiences = self.memory.sample(self.batch_size, alpha=self.alpha)
+            assert len(experiences) == self.batch_size
 
             # Start by extracting the necessary parameters (we use a vectorized implementation).
             state0_batch = []
@@ -278,12 +265,8 @@ class DQNAgent(AbstractDQNAgent):
             terminal1_batch = []
             state1_batch = []
             for e in experiences:
-                if self.enable_prioritized_replay:
-                    state0_batch.append(e.state0)
-                    state1_batch.append(e.state1)
-                else:
-                    state0_batch.append(e.state0[0])
-                    state1_batch.append(e.state1[0])
+                state0_batch.append(e.state0[0])
+                state1_batch.append(e.state1[0])
                 reward_batch.append(e.reward)
                 action_batch.append(e.action)
                 terminal1_batch.append(0. if e.terminal1 else 1.)
@@ -350,7 +333,7 @@ class DQNAgent(AbstractDQNAgent):
                 metrics += self.processor.metrics
 
             if self.enable_prioritized_replay:
-                self.memory.update_priorities(indices, Rs - q_values[range(self.batch_size), actions])
+                self.memory.update_priorities(sampled_indices, Rs - q_values[range(self.batch_size), actions])
 
         if self.target_model_update >= 1 and self.step % self.target_model_update == 0:
             self.update_target_model_hard()

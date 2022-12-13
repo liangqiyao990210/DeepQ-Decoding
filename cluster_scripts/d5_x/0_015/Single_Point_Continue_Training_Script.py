@@ -118,10 +118,7 @@ policy = LinearAnnealedPolicy(EpsGreedyQPolicy(masked_greedy=all_configs["masked
     nb_steps=all_configs["exploration_fraction"])
 test_policy = GreedyQPolicy(masked_greedy=True)
 ENABLE_PRIORITIZED_REPLAY = True
-if ENABLE_PRIORITIZED_REPLAY:
-  memory = PrioritizedMemory(limit=all_configs["buffer_size"], window_length=1)
-else:
-  memory = SequentialMemory(limit=all_configs["buffer_size"], window_length=1)
+memory = SequentialMemory(limit=all_configs["buffer_size"], window_length=1, enable_prioritized_replay=ENABLE_PRIORITIZED_REPLAY)
 
 # ------------------------------------------------------------------------------------------
 
@@ -176,10 +173,7 @@ dqn.save_weights(final_weights_file, overwrite=True)
 # -------------------------------------------------------------------------------------------
 
 model = build_convolutional_nn(all_configs["c_layers"],all_configs["ff_layers"], env.observation_space.shape, env.num_actions)
-if ENABLE_PRIORITIZED_REPLAY:
-  memory = PrioritizedMemory(limit=all_configs["buffer_size"], window_length=1)
-else:
-  memory = SequentialMemory(limit=all_configs["buffer_size"], window_length=1)
+memory = SequentialMemory(limit=all_configs["buffer_size"], window_length=1, enable_prioritized_replay=ENABLE_PRIORITIZED_REPLAY)
 policy = GreedyQPolicy(masked_greedy=True)
 test_policy = GreedyQPolicy(masked_greedy=True)
 
@@ -226,6 +220,7 @@ while keep_evaluating:
   results = testing_history.history["episode_lifetimes_rolling_avg"]
   final_result = results[-1:][0]
   all_results[dict_key] = final_result
+  print(f'Final result at {dict_key}: {final_result}')
 
   if abs(trained_at - err_rate) < 1e-6:
     results_file = os.path.join(variable_configs_folder,"results.p")

@@ -21,7 +21,7 @@ fixed_config = {"d": 5,
                 "volume_depth": 5,
                 "testing_length": 101,
                 "buffer_size": 50000,
-                "dueling": False,
+                "dueling": True,
                 "masked_greedy": False,
                 "static_decoder": True}
 
@@ -39,7 +39,7 @@ learning_rate_list = [0.0001, 0.00005, 0.00001]
 exploration_fraction_list = [100000]
 sim_time_per_ef = [10]
 max_eps_list = [1.0]
-target_network_update_freq_list = [2500]
+target_network_update_freq_list = [5000]
 gamma_list = [0.99]
 final_eps_list = [0.02]
 alpha_list = [0, 0.5, 0.7, 1.0]
@@ -92,7 +92,7 @@ for ls in learning_starts_list:
 #SBATCH --job-name='''+job_name+'''          # Job name, will show up in squeue output
 #SBATCH --mail-type=END
 #SBATCH --mail-user=ql94@duke.edu	       # It will send you an email when the job is finished. 
-#SBATCH --mem=10G                   # Memory per cpu in MB (see also --mem) 
+#SBATCH --mem=15G                   # Memory per cpu in MB (see also --mem) 
 #SBATCH --output=out.out         # File to which standard out will be written
 #SBATCH --error=slurm.err           # File to which standard err will be written
 
