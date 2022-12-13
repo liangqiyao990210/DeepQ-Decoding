@@ -65,8 +65,7 @@ for ls in learning_starts_list:
                                 "target_network_update_freq": tnuf,
                                 "gamma": g,
                                 "alpha": alpha,
-                                "final_eps": fe,
-                                "enable_prioritized_replay": enable_prioritized}
+                                "final_eps": fe}
 
                                 config_directory = os.path.join(cwd,"config_"+str(config_counter)+"/")
                                 if not os.path.exists(config_directory):
