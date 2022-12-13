@@ -54,41 +54,40 @@ for ls in learning_starts_list:
                     for g in gamma_list:
                         for fe in final_eps_list:
                             for alpha in alpha_list:
-                                for enable_prioritized in enable_prioritized_replay:
 
-                                    variable_config_dict = {"p_phys": p_phys,
-                                    "p_meas": p_phys,
-                                    "success_threshold": success_threshold,
-                                    "learning_starts": ls,
-                                    "learning_rate": lr,
-                                    "exploration_fraction": ef,
-                                    "max_eps": me,
-                                    "target_network_update_freq": tnuf,
-                                    "gamma": g,
-                                    "alpha": alpha,
-                                    "final_eps": fe,
-                                    "enable_prioritized_replay": enable_prioritized}
+                                variable_config_dict = {"p_phys": p_phys,
+                                "p_meas": p_phys,
+                                "success_threshold": success_threshold,
+                                "learning_starts": ls,
+                                "learning_rate": lr,
+                                "exploration_fraction": ef,
+                                "max_eps": me,
+                                "target_network_update_freq": tnuf,
+                                "gamma": g,
+                                "alpha": alpha,
+                                "final_eps": fe,
+                                "enable_prioritized_replay": enable_prioritized}
 
-                                    config_directory = os.path.join(cwd,"config_"+str(config_counter)+"/")
-                                    if not os.path.exists(config_directory):
-                                        os.makedirs(config_directory)
-                                    else:
-                                        shutil.rmtree(config_directory)           #removes all the subdirectories!
-                                        os.makedirs(config_directory)
+                                config_directory = os.path.join(cwd,"config_"+str(config_counter)+"/")
+                                if not os.path.exists(config_directory):
+                                    os.makedirs(config_directory)
+                                else:
+                                    shutil.rmtree(config_directory)           #removes all the subdirectories!
+                                    os.makedirs(config_directory)
 
-                                    file_path = os.path.join(config_directory, "variable_config_"+str(config_counter) + ".p")
-                                    pickle.dump(variable_config_dict, open(file_path, "wb" ) )
-                                                
-                                    # Now, write into the bash script exactly what we want to appear there
-                                    job_limit = str(sim_time_per_ef[ef_count])
-                                    job_name=str(p_phys)+"_"+str(config_counter)
-                                    output_file = os.path.join(cwd,"output_files/out_"+job_name+".out")
-                                    error_file = os.path.join(cwd,"output_files/err_"+job_name+".err")
-                                    python_script = os.path.join(cwd, "Single_Point_Continue_Training_Script.py")
+                                file_path = os.path.join(config_directory, "variable_config_"+str(config_counter) + ".p")
+                                pickle.dump(variable_config_dict, open(file_path, "wb" ) )
+                                            
+                                # Now, write into the bash script exactly what we want to appear there
+                                job_limit = str(sim_time_per_ef[ef_count])
+                                job_name=str(p_phys)+"_"+str(config_counter)
+                                output_file = os.path.join(cwd,"output_files/out_"+job_name+".out")
+                                error_file = os.path.join(cwd,"output_files/err_"+job_name+".err")
+                                python_script = os.path.join(cwd, "Single_Point_Continue_Training_Script.py")
 
 
-                                    f = open(config_directory + "/simulation_script.sh",'w')  
-                                    f.write('''#!/bin/bash
+                                f = open(config_directory + "/simulation_script.sh",'w')  
+                                f.write('''#!/bin/bash
 #SBATCH -p scavenger                         # scavenger division
 #SBATCH -c 1                                 # Number of cores
 #SBATCH --array=1-1  			             # How many jobs do you have                               
@@ -118,5 +117,5 @@ python '''+python_script+''' '''+str(config_counter)+'''
 #----------- wait some time ------------------------------------
 
 sleep 50''')
-                                    f.close()
-                                    config_counter += 1 
+                                f.close()
+                                config_counter += 1 
