@@ -34,17 +34,17 @@ pickle.dump(fixed_config, open(fixed_config_path, "wb" ) )
 p_phys = 0.015
 success_threshold = 100000
 
-learning_starts_list = [1000]
-learning_rate_list = [0.0001, 0.00005, 0.00001]
+learning_starts_list = [2500]
+learning_rate_list = [0.00001]
 exploration_fraction_list = [100000]
 sim_time_per_ef = [10]
-max_eps_list = [1.0]
-target_network_update_freq_list = [5000]
+max_eps_list = [0.04]
+target_network_update_freq_list = [2500]
 gamma_list = [0.99]
 final_eps_list = [0.02]
-alpha_list = [0, 0.5, 0.7, 1.0]
+alpha_list = [0.7]
 
-config_counter = 1
+config_counter = 100
 for ls in learning_starts_list:
     for lr in learning_rate_list:
         for ef_count, ef in enumerate(exploration_fraction_list):
@@ -92,7 +92,7 @@ for ls in learning_starts_list:
 #SBATCH --job-name='''+job_name+'''          # Job name, will show up in squeue output
 #SBATCH --mail-type=END
 #SBATCH --mail-user=ql94@duke.edu	       # It will send you an email when the job is finished. 
-#SBATCH --mem=15G                   # Memory per cpu in MB (see also --mem) 
+#SBATCH --mem=32G                   # Memory per cpu in MB (see also --mem) 
 #SBATCH --output=out.out         # File to which standard out will be written
 #SBATCH --error=slurm.err           # File to which standard err will be written
 
