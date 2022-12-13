@@ -18,7 +18,7 @@ import os
 import rl as rl
 from rl.agents.dqn import DQNAgent
 from rl.policy import BoltzmannQPolicy, EpsGreedyQPolicy, LinearAnnealedPolicy, GreedyQPolicy
-from rl.memory import SequentialMemory, PrioritizedMemory
+from rl.memory import SequentialMemory
 from rl.callbacks import FileLogger
 
 import json

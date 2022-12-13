@@ -5,7 +5,7 @@
 #SBATCH --job-name=0.015_5          # Job name, will show up in squeue output
 #SBATCH --mail-type=END
 #SBATCH --mail-user=ql94@duke.edu	       # It will send you an email when the job is finished. 
-#SBATCH --mem=10G                   # Memory per cpu in MB (see also --mem) 
+#SBATCH --mem=20G                   # Memory per cpu in MB (see also --mem) 
 #SBATCH --output=out.out         # File to which standard out will be written
 #SBATCH --error=slurm.err           # File to which standard err will be written
 
