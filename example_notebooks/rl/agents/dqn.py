@@ -102,7 +102,7 @@ class DQNAgent(AbstractDQNAgent):
  
     """
     def __init__(self, model, policy=None, test_policy=None, enable_double_dqn=True, enable_dueling_network=False,
-                 dueling_type='avg', *args, **kwargs):
+                 dueling_type='avg', enable_prioritized_replay=True, alpha=0.0, *args, **kwargs):
         super(DQNAgent, self).__init__(*args, **kwargs)
 
         # Validate (important) input.
@@ -115,6 +115,9 @@ class DQNAgent(AbstractDQNAgent):
         self.enable_double_dqn = enable_double_dqn
         self.enable_dueling_network = enable_dueling_network
         self.dueling_type = dueling_type
+        self.enable_prioritized_replay = enable_prioritized_replay
+        self.alpha = alpha
+
         if self.enable_dueling_network:
             # get the second last layer of the model, abandon the last layer
             layer = model.layers[-2]
@@ -252,7 +255,7 @@ class DQNAgent(AbstractDQNAgent):
 
         # Train the network on a single stochastic batch.
         if self.step > self.nb_steps_warmup and self.step % self.train_interval == 0:
-            experiences = self.memory.sample(self.batch_size)
+            sampled_indices, experiences = self.memory.sample(self.batch_size, alpha=self.alpha)
             assert len(experiences) == self.batch_size
 
             # Start by extracting the necessary parameters (we use a vectorized implementation).
@@ -328,6 +331,9 @@ class DQNAgent(AbstractDQNAgent):
             metrics += self.policy.metrics
             if self.processor is not None:
                 metrics += self.processor.metrics
+
+            if self.enable_prioritized_replay:
+                self.memory.update_priorities(sampled_indices, Rs - q_values[range(self.batch_size), actions])
 
         if self.target_model_update >= 1 and self.step % self.target_model_update == 0:
             self.update_target_model_hard()
