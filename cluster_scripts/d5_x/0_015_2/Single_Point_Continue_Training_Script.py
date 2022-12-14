@@ -34,12 +34,12 @@ import datetime
 
 # ---------------------------------------------------------------------------------------------
 
-variable_config_number = sys.argv[1]
-base_directory = os.path.dirname(os.getcwd())
+variable_config_number = 200
+base_directory = os.getcwd()
 # base_directory = os.getcwd()
 
 variable_configs_folder = os.path.join(base_directory, "config_"+str(variable_config_number) + "/")
-variable_configs_path = os.path.join(variable_configs_folder, "variable_config_"+variable_config_number + ".p" )
+variable_configs_path = os.path.join(variable_configs_folder, "variable_config_"+str(variable_config_number) + ".p" )
 fixed_configs_path = os.path.join(base_directory, "fixed_config.p")
 fixed_configs = pickle.load( open(fixed_configs_path, "rb" ) )
 variable_configs = pickle.load( open(variable_configs_path, "rb" ) )
@@ -117,7 +117,7 @@ policy = LinearAnnealedPolicy(EpsGreedyQPolicy(masked_greedy=all_configs["masked
     value_test=0.0, 
     nb_steps=all_configs["exploration_fraction"])
 test_policy = GreedyQPolicy(masked_greedy=True)
-ENABLE_PRIORITIZED_REPLAY = True
+ENABLE_PRIORITIZED_REPLAY = False
 memory = SequentialMemory(limit=all_configs["buffer_size"], window_length=1, enable_prioritized_replay=ENABLE_PRIORITIZED_REPLAY)
 
 # ------------------------------------------------------------------------------------------
