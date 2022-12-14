@@ -34,18 +34,18 @@ pickle.dump(fixed_config, open(fixed_config_path, "wb" ) )
 p_phys = 0.015
 success_threshold = 100000
 
-learning_starts_list = [2500]
+learning_starts_list = [1000]
 learning_rate_list = [0.00001]
-exploration_fraction_list = [100000]
+exploration_fraction_list = [200000]
 sim_time_per_ef = [10]
-max_eps_list = [0.04]
+max_eps_list = [0.25]
 target_network_update_freq_list = [2500]
 gamma_list = [0.99]
-final_eps_list = [0.02]
+final_eps_list = [0.04]
 alpha_list = [0,0.7]
 enable_prioritized_replay = [True, False]
 
-config_counter = 100
+config_counter = 200
 for ls in learning_starts_list:
     for lr in learning_rate_list:
         for ef_count, ef in enumerate(exploration_fraction_list):
