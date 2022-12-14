@@ -2,7 +2,7 @@
 #SBATCH -p scavenger                         # scavenger division
 #SBATCH -c 1                                 # Number of cores
 #SBATCH --array=1-1  			             # How many jobs do you have                               
-#SBATCH --job-name=0.015_200          # Job name, will show up in squeue output
+#SBATCH --job-name=0.015_201          # Job name, will show up in squeue output
 #SBATCH --mail-type=END
 #SBATCH --mail-user=ql94@duke.edu	       # It will send you an email when the job is finished. 
 #SBATCH --mem=32G                   # Memory per cpu in MB (see also --mem) 
@@ -23,7 +23,7 @@ scontrol show job $SLURM_JOBID
 
 # ------- run the script -----------------------
 
-python /Users/catherine/Desktop/DeepQ-Decoding/cluster_scripts/d5_x/0_015_2/Single_Point_Continue_Training_Script.py 200
+python /Users/catherine/Desktop/DeepQ-Decoding/cluster_scripts/d5_x/0_015_2/Single_Point_Continue_Training_Script.py 201
 
 #----------- wait some time ------------------------------------
 
