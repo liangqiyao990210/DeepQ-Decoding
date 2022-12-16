@@ -23,44 +23,45 @@ import shutil
 import datetime
 import pickle
 
-LR = [10*10**-5, 1*10**-5]
-N = [100, 50, 10]
+LR = reversed([0.5*10**-5])
+N = reversed([10])
 hypergrid = []
 for rate in LR:
     for nstep in N:
         hypergrid.append({"rate":rate, "nstep":nstep})
 
 for run_index, grid in enumerate(hypergrid):
-
+    print("running grid #", str(run_index))
     fixed_configs = {"d": 5,
-                    "use_Y": False,
-                    "train_freq": 1,
-                    "batch_size": 32,
-                    "print_freq": 250,
-                    "rolling_average_length": 500,
-                    "stopping_patience": 500,
-                    "error_model": "X",
-                    "c_layers": [[64,3,2],[32,2,1],[32,2,1]],
-                    "ff_layers": [[512,0.2]],
-                    "max_timesteps": 100000,
-                    "volume_depth": 5,
-                    "testing_length": 101,
-                    "buffer_size": 50000,
-                    "dueling": True,
-                    "masked_greedy": False,
-                    "static_decoder": True}
+                "use_Y": False,
+                "train_freq": 1,
+                "batch_size": 32,
+                "print_freq": 250,
+                "rolling_average_length": 1000,
+                "stopping_patience": 1000,
+                "error_model": "X",
+                "c_layers": [[64,3,2],[32,2,1],[32,2,1]],
+                "ff_layers": [[512,0.2]],
+                "max_timesteps": 1000000,
+#               "max_timesteps": 1000000,
+                "volume_depth": 5,
+                "testing_length": 101,
+                "buffer_size": 50000,
+                "dueling": True,
+                "masked_greedy": False,
+                "static_decoder": True}
 
     variable_configs = {"p_phys": 0.013,
-                        "p_meas": 0.013,
-                        "success_threshold": 70,
-                        "learning_starts": 1000,
-                        "learning_rate": grid["rate"],
-                        "exploration_fraction": 100000,
-                        "max_eps": 0.5,
-                        "target_network_update_freq": 5000,
-                        "gamma": 0.99,
-                        "final_eps": 0.001}
-
+                    "p_meas": 0.013,
+                    "success_threshold": 10000,
+                    "learning_starts": 1000,
+                    "learning_rate": grid["rate"],
+                    "exploration_fraction": 100000,
+                    "max_eps": 0.5,
+                    "target_network_update_freq": 5000,
+                    "gamma": 0.99,
+                    "final_eps": 0.001}
+    
     logging_directory = os.path.join(os.getcwd(),"logging_directory/" + str(run_index+1) + "/")
     static_decoder_path = os.path.join(os.getcwd(),"referee_decoders/nn_d5_X_p5")
 
@@ -138,8 +139,8 @@ for run_index, grid in enumerate(hypergrid):
     weights_file = os.path.join(logging_directory, "dqn_weights.h5f")
     dqn.save_weights(weights_file, overwrite=True)
     
-    historypickle = os.path.join(logging_directory,"historypickle.p")
-    pickle.dump(history, open(historypickle, "wb" ) )
+    # historypickle = os.path.join(logging_directory,"historypickle.p")
+    # pickle.dump(history, open(historypickle, "wb" ) )
 
 # And finally, in order to evaluate the training procedure we may be interested in viewing any of the metrics which were logged. These are all saved within the history.history dictionary. For example, we are often most interested in analyzing the training procedure by looking at the rolling average of the qubit lifetime, which we can do as follows:
 
